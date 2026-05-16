@@ -15,76 +15,69 @@ type
 implementation
 
 uses
-  Horse, System.JSON, System.Classes, System.SysUtils, System.IOUtils, System.Threading,
+  Horse, System.JSON, System.Classes, System.SysUtils, System.IOUtils, System.SyncObjs,
+  OtlTask, OtlTaskControl, OtlParallel,
   BackupAgent.Core.State, BackupAgent.Core.Interfaces, BackupAgent.Core.Config,
   BackupAgent.Core.Crypto, BackupAgent.Infra.ProviderFactory, BackupAgent.Core.Setup;
 
 var
   // Gerenciador de estado global em memória
   GlobalJob: TBackupJob;
+  JobLock: TCriticalSection;
 
 procedure StartBackup(Req: THorseRequest; Res: THorseResponse; Next: TProc);
 begin
-  if not Assigned(GlobalJob) then
-    GlobalJob := TBackupJob.Create;
+  JobLock.Enter;
+  try
+    if not Assigned(GlobalJob) then
+      GlobalJob := TBackupJob.Create;
+      
+    // Impede execução de múltiplos backups simultâneos travando o disco
+    if GlobalJob.State in [bsConnecting, bsSnapshot, bsHashing, bsZipping] then
+    begin
+      Res.Status(THTTPStatus.Conflict).Send('{"error":"Um backup ja esta em andamento."}');
+      Exit;
+    end;
     
-  // Impede execução de múltiplos backups simultâneos travando o disco
-  if GlobalJob.State in [bsConnecting, bsSnapshot, bsHashing, bsZipping] then
-  begin
-    Res.Status(THTTPStatus.Conflict).Send('{"error":"Um backup ja esta em andamento."}');
-    Exit;
+    GlobalJob.UpdateStatus(bsWaiting, 0, 'Iniciando pipeline de backup...');
+  finally
+    JobLock.Leave;
   end;
   
-  GlobalJob.UpdateStatus(bsWaiting, 0, 'Iniciando pipeline de backup...');
-  
-  // Inicia o processo em background usando TTask para devolver o HTTP 202 imediatamente
-  TTask.Run(
+  // Inicia o processo em background usando OmniThreadLibrary
+  Parallel.Async(
     procedure
     var
       Config: TConfigManager;
       Provider: IBackupProvider;
       DestFbkFile, DestZipFile, CnpjPwd, FileHash: string;
-      
-      procedure TracePipeline(const AMsg: string);
-      var
-        F: TextFile;
-      begin
-        try
-          AssignFile(F, 'C:\backup\BackupAgent\server_pipeline.log');
-          if FileExists('C:\backup\BackupAgent\server_pipeline.log') then Append(F) else Rewrite(F);
-          Writeln(F, FormatDateTime('hh:nn:ss.zzz', Now) + ' - ' + AMsg);
-          CloseFile(F);
-        except
-        end;
-      end;
-      
     begin
       try
-        TracePipeline('=== INICIO DA PIPELINE EM BACKGROUND ===');
+        Log.Info('=== INICIO DA PIPELINE EM BACKGROUND ===', 'BackupAgent');
         Config := TConfigManager.Create;
         try
           GlobalJob.UpdateStatus(bsConnecting, 10, 'Lendo CNPJ e inspecionando banco de dados...');
-          TracePipeline('1. UpdateStatus OK. Chamando CreateBackupProvider para: ' + Config.DatabasePath);
+          Log.Debug('1. UpdateStatus OK. Chamando CreateBackupProvider para: ' + Config.DatabasePath, 'BackupAgent');
           
           Provider := TProviderFactory.CreateBackupProvider(Config.DatabasePath);
-          TracePipeline('2. CreateBackupProvider OK. Chamando GetDatabaseCNPJ...');
+          Log.Debug('2. CreateBackupProvider OK. Chamando GetDatabaseCNPJ...', 'BackupAgent');
           
           CnpjPwd := TProviderFactory.GetDatabaseCNPJ(Config.DatabasePath);
-          TracePipeline('3. GetDatabaseCNPJ OK. Retornou: ' + CnpjPwd);
+          Log.Debug('3. GetDatabaseCNPJ OK. Retornou: ' + CnpjPwd, 'BackupAgent');
           
           // Pattern: C:\backup\BackupAgent\Bkp_12345678000199_2026-05-09_1400.fbk
           DestFbkFile := Format('%sBkp_%s_%s.fbk', [TSetupManager.GetBackupPath, CnpjPwd, FormatDateTime('yyyy-mm-dd_hhnn', Now)]);
           DestZipFile := ChangeFileExt(DestFbkFile, '.zip');
           
           GlobalJob.UpdateStatus(bsSnapshot, 20, 'Verificando disco livre e iniciando snapshot...');
-          TracePipeline('4. Path definido. Chamando EnsureSufficientDiskSpace...');
+          Log.Debug('4. Path definido. Chamando EnsureSufficientDiskSpace...', 'BackupAgent');
           
           // Trava o backup imediatamente se não houver espaço em disco seguro no destino
           TSetupManager.EnsureSufficientDiskSpace(Config.DatabasePath, DestFbkFile);
           
-          TracePipeline('5. Espaço OK. Disparando Provider.ExecuteBackup...');
+          Log.Debug('5. Espaço OK. Disparando Provider.ExecuteBackup...', 'BackupAgent');
           Provider.ExecuteBackup(Config.DatabasePath, DestFbkFile, '');
-          TracePipeline('6. ExecuteBackup RETORNOU COM SUCESSO.');
+          Log.Info('6. ExecuteBackup RETORNOU COM SUCESSO.', 'BackupAgent');
           
           GlobalJob.UpdateStatus(bsZipping, 80, 'Compactando arquivo .fbk para .zip...');
           TCryptoUtils.CompressToZip(DestFbkFile, DestZipFile, CnpjPwd);
@@ -96,20 +89,20 @@ begin
           GlobalJob.UpdateStatus(bsHashing, 90, 'Gerando integridade SHA-256...');
           FileHash := TCryptoUtils.CalculateSHA256(DestZipFile);
           
-          TracePipeline('9. Hash Finalizado. Aplicando Retenção...');
+          Log.Debug('9. Hash Finalizado. Aplicando Retenção...', 'BackupAgent');
           // Aplicar Política de Retenção de 7 dias APÓS validar que o novo ZIP nasceu perfeito
           TSetupManager.ApplyRetentionPolicy(TSetupManager.GetBackupPath, 7);
           
           GlobalJob.ResultFile := DestZipFile;
           GlobalJob.UpdateStatus(bsReady, 100, 'Concluido! Hash: ' + Copy(FileHash, 1, 8));
-          TracePipeline('10. Processo Finalizado Perfeitamente (bsReady).');
+          Log.Info('10. Processo Finalizado Perfeitamente (bsReady).', 'BackupAgent');
         finally
           Config.Free;
         end;
       except
         on E: Exception do
         begin
-          TracePipeline('EXCECAO FATAL NA PIPELINE: ' + E.Message);
+          Log.Error('EXCECAO FATAL NA PIPELINE: ' + E.Message, 'BackupAgent');
           GlobalJob.UpdateStatus(bsError, 0, 'Erro fatal no motor de backup: ' + E.Message);
         end;
       end;
@@ -209,9 +202,11 @@ begin
 end;
 
 initialization
+  JobLock := TCriticalSection.Create;
 
 finalization
   if Assigned(GlobalJob) then
     GlobalJob.Free;
+  JobLock.Free;
 
 end.

@@ -29,6 +29,9 @@ type
 
 implementation
 
+uses
+  BackupAgent.Core.Setup;
+
 { TFB5BackupProvider }
 
 constructor TFB5BackupProvider.Create;
@@ -51,55 +54,46 @@ end;
 
 
 procedure TFB5BackupProvider.ExecuteBackup(const ADatabasePath, ADestinationPath, ACnpjPwd: string);
-
-  procedure Trace(const AMsg: string);
-  begin
-    try
-      TFile.AppendAllText('C:\backup\BackupAgent\trace_fb5.log', FormatDateTime('hh:nn:ss.zzz', Now) + ' - ' + AMsg + sLineBreak);
-    except
-    end;
-  end;
-
 begin
-  Trace('=== INICIANDO EXECUÇÃO TFB5BackupProvider ===');
+  Log.Info('=== INICIANDO EXECUÇÃO TFB5BackupProvider ===', 'Firebird5');
   FState := bsSnapshot;
   FProgress := 10;
   
-  Trace('1. Criando DriverLink...');
+  Log.Debug('1. Criando DriverLink...', 'Firebird5');
   FBackupService.DriverLink := TFDPhysFBDriverLink.Create(FBackupService);
   try
     try
-      Trace('2. Configurando propriedades de conexão (127.0.0.1, SYSDBA)...');
+      Log.Debug('2. Configurando propriedades de conexão (127.0.0.1, SYSDBA)...', 'Firebird5');
       FBackupService.Host := '127.0.0.1';
       FBackupService.UserName := 'SYSDBA';
       FBackupService.Password := 'masterkey';
       FBackupService.Protocol := ipTCPIP;
       FBackupService.Verbose := True; 
       
-      Trace('3. Setando paths: DB=' + ADatabasePath + ' | DEST=' + ADestinationPath);
+      Log.Debug('3. Setando paths: DB=' + ADatabasePath + ' | DEST=' + ADestinationPath, 'Firebird5');
       FBackupService.Database := ADatabasePath;
       FBackupService.BackupFiles.Clear;
       FBackupService.BackupFiles.Add(ADestinationPath);
       
       FBackupService.Options := [];
       
-      Trace('4. Chamando FBackupService.Backup() [PONTO CRÍTICO - BLOQUEANTE]...');
+      Log.Info('4. Chamando FBackupService.Backup() [PONTO CRÍTICO - BLOQUEANTE]...', 'Firebird5');
       FBackupService.Backup;
-      Trace('5. RETORNO DO BACKUP COM SUCESSO! FBackupService.Backup() não travou!');
+      Log.Info('5. RETORNO DO BACKUP COM SUCESSO! FBackupService.Backup() não travou!', 'Firebird5');
       
       FProgress := 100;
       FState := bsReady;
     except
       on E: Exception do
       begin
-        Trace('EXCEÇÃO LANÇADA DURANTE O BACKUP: ' + E.Message);
+        Log.Error('EXCEÇÃO LANÇADA DURANTE O BACKUP: ' + E.Message, 'Firebird5');
         raise;
       end;
     end;
   finally
-    Trace('6. Limpando DriverLink...');
+    Log.Debug('6. Limpando DriverLink...', 'Firebird5');
     FBackupService.DriverLink.Free;
-    Trace('7. Fim da rotina ExecuteBackup.');
+    Log.Debug('7. Fim da rotina ExecuteBackup.', 'Firebird5');
   end;
 end;
 

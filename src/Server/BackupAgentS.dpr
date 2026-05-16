@@ -1,4 +1,4 @@
-﻿program BackupAgentS;
+program BackupAgentS;
 
 uses
   Vcl.SvcMgr,
@@ -15,7 +15,8 @@ uses
   BackupAgent.Infra.Firebird25 in '..\Infra\BackupAgent.Infra.Firebird25.pas',
   BackupAgent.Server.API in 'BackupAgent.Server.API.pas',
   BackupAgent.Server.Controller in 'BackupAgent.Server.Controller.pas',
-  BackupAgent.Server.Service in 'BackupAgent.Server.Service.pas' {BackupAgentSvc: TService};
+  BackupAgent.Server.Service in 'BackupAgent.Server.Service.pas' {BackupAgentSvc: TService},
+  LoggerPro, LoggerPro.FileAppender, LoggerPro.ConsoleAppender;
 
 {$R *.res}
 
@@ -37,7 +38,14 @@ begin
     Writeln('');
     
     TSetupManager.InitializeEnvironment;
-    Writeln('[OK] Infraestrutura de pastas verificada.');
+    
+    // Configura o LoggerPro para Console + Arquivo Rotativo (máx 10MB, mantendo 5 arquivos)
+    Log := BuildLogWriter([
+      TLoggerProConsoleAppender.Create,
+      TLoggerProFileAppender.Create(10, 5, TSetupManager.GetBackupPath + 'logs')
+    ]);
+    
+    Log.Info('Infraestrutura de pastas verificada.', 'Console');
     
     Config := TConfigManager.Create;
     try
@@ -49,8 +57,8 @@ begin
       end;
       
       TServerAPI.RegisterRoutes;
-      Writeln('[OK] Horse Server escutando na porta ' + Config.RESTPort.ToString);
-      Writeln('Pressione Ctrl+C para interromper.');
+      Log.Info('Horse Server escutando na porta ' + Config.RESTPort.ToString, 'Console');
+      Log.Info('Pressione Ctrl+C para interromper.', 'Console');
       
       THorse.Listen(Config.RESTPort);
     finally

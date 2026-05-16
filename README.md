@@ -16,7 +16,9 @@ O projeto visa fornecer uma solução de backup confiável, rodando muitas vezes
 ## 🛠 Tecnologias
 
 - **Linguagem:** Delphi / Object Pascal
-- **Arquitetura:** Agente / Background Service
+- **Arquitetura:** Agente / Background Service API (Horse)
+- **Concorrência e Multithreading:** OmniThreadLibrary (OTL)
+- **Log e Auditoria:** LoggerPro (Console & File Appenders)
 - **Controle de Versão:** Git / GitHub
 
 ## 📂 Versionamento

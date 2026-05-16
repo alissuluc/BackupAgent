@@ -43,14 +43,14 @@ O projeto deve nascer em `C:\ProjetosIA\BackupAgent\src\`:
   - Implementa `IBackupProvider` para o parque legado (pode iniciar usando command-line do `gbak` encapsulado ou adapter de API antiga).
 - `BackupAgent.Infra.ProviderFactory.pas`
   - Classe de injeção e fábrica. Baseado na detecção inicial, devolve a instância correta do provedor.
-- `BackupAgent.Infra.Logger.pas`
-  - Gravação robusta de logs no sistema de arquivos.
+- **Log Centralizado (LoggerPro)**
+  - O sistema global de logs é ancorado em `BackupAgent.Core.Setup.pas` e os arquivos são rotacionados utilizando o padrão robusto do `LoggerPro`.
 
-### 3.3. Agente Servidor (`BackupAgentS.dpr`)
-- Responsável por rodar o motor. Iniciaremos como **Console Application** para facilitar homologação (visualização direta do que ele está fazendo).
+### 3.3. Agente Servidor (`BackupAgentS.dpr` / `BackupAgent.Server.Service.pas`)
+- Responsável por rodar o motor. Suporta execução dupla: **Console Application** e **Windows Service**.
 - `BackupAgent.Server.API.pas`: Mapeamento de rotas HTTP com o micro-framework *Horse*.
 - `BackupAgent.Server.Controller.pas`:
-  - `POST /api/v1/backup/start`: Recebe gatilho, inicia a `TTask` em background e devolve *HTTP 202*.
+  - `POST /api/v1/backup/start`: Recebe gatilho, inicia processamento `Fire-and-forget` via **OmniThreadLibrary (`Parallel.Async`)** e devolve *HTTP 202*.
   - `GET /api/v1/backup/status`: Devolve o status/progresso em JSON.
   - `GET /api/v1/backup/download`: Rota de streaming do ZIP (retorna o header `X-SHA256`).
 
@@ -80,4 +80,4 @@ O projeto deve nascer em `C:\ProjetosIA\BackupAgent\src\`:
 - [x] **Fase 1: Infraestrutura Core** (Setup, Config, Interfaces e Provider Factory)
 - [x] **Fase 2: Motor de Backup (Server)** (Controllers, ZIP, Crypto e Integração FireDAC nativa)
 - [x] **Fase 3: Rede e Terminal (Client)** (VCL, THTTPClient, validação SHA-256 e Streaming HTTP)
-- [ ] **Fase 4: Implantação e Windows Service** (TService, Inno Setup)
+- [x] **Fase 4: Implantação e Windows Service** (TService, OmniThreadLibrary, LoggerPro)

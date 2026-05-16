@@ -3,7 +3,11 @@ unit BackupAgent.Core.Setup;
 interface
 
 uses
-  System.SysUtils, System.IOUtils, System.Types, System.DateUtils, System.Classes;
+  System.SysUtils, System.IOUtils, System.Types, System.DateUtils, System.Classes,
+  LoggerPro;
+
+var
+  Log: ILogWriter;
 
 type
   TSetupManager = class
