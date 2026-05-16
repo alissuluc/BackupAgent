@@ -1,0 +1,40 @@
+# Arquivos de usuário e configurações locais do Delphi
+*.dproj.local
+*.groupproj.local
+*.svndproj.local
+*.identcache
+*.stat
+
+# Arquivos de backup e temporários
+*.~*
+*.bak
+__history/
+__recovery/
+
+# Arquivos compilados
+*.dcu
+*.exe
+*.dll
+*.bpl
+*.bpi
+*.dcp
+*.so
+*.apk
+*.dSYM
+*.map
+*.jdbg
+*.rsm
+*.tds
+
+# Diretórios de saída padrão do Delphi
+Win32/
+Win64/
+Android/
+iOSDevice32/
+iOSDevice64/
+iOSSimulator/
+OSX32/
+Linux64/
+
+# Logs e outros
+*.log
